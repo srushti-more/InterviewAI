@@ -28,8 +28,13 @@ app.post('/api/upload-resume', upload.single('resume'), async (req, res) => {
     const extractedText = pdfData.text;
 
     // Try to contact AI
-    const prompt = `
-      You are an expert technical interviewer. Review the following candidate's resume and the target job description. Generate a concise, personalized interview strategy (max 3 bullet points) and formulate the very first interview question based specifically on the candidate's past projects and skills.
+ const prompt = `
+      You are an expert technical interviewer. Review the following candidate's resume and the target job description. 
+      
+      Generate a concise, personalized interview strategy (max 3 bullet points) and formulate the very first interview question based specifically on the candidate's past projects and skills.
+      
+      IMPORTANT: Format your response in strict Markdown. You MUST use newlines to separate paragraphs, and you MUST put each bullet point on its own completely separate line.
+      
       Target Job Description: ${req.body.jobDescription}
       Candidate Resume: ${extractedText}
     `;
