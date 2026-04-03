@@ -1,21 +1,21 @@
-import UploadSection from './components/UploadSection';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import LandingPage from './pages/LandingPage';
+import DashboardPage from './pages/DashboardPage';
+import InterviewRoom from './pages/InterviewRoom';
+import FeedbackPage from './pages/FeedbackPage';
 
 function App() {
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">
-            InterviewAI
-          </h1>
-          <p className="mt-4 text-lg text-gray-500">
-            Master your placement process with real-time, AI-driven mock interviews.
-          </p>
-        </div>
-        
-        <UploadSection />
+    <Router>
+      <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/interview" element={<InterviewRoom />} />
+          <Route path="/feedback" element={<FeedbackPage />} />
+        </Routes>
       </div>
-    </div>
+    </Router>
   );
 }
 
