@@ -1,29 +1,22 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-export default function DashboardPage() {
-  const navigate = useNavigate();
-  
-  // State to hold our form inputs
-  const [resumeFile, setResumeFile] = useState(null);
-  const [jobDescription, setJobDescription] = useState('');
-  
-  // State to handle UI changes (loading and the final AI response)
+export default function Dashboard() {
+  const [file, setFile] = useState(null);
+  const [jobDesc, setJobDesc] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [aiFeedback, setAiFeedback] = useState(null);
+  const navigate = useNavigate();
 
-  // 1. Handle the file upload to your Node.js backend
-  const handleUpload = async (e) => {
-    e.preventDefault();
-    if (!resumeFile || !jobDescription) {
+  const handleUpload = async () => {
+    if (!file || !jobDesc) {
       alert("Please provide both a resume and a job description.");
       return;
     }
 
     setIsLoading(true);
     const formData = new FormData();
-    formData.append('resume', resumeFile);
-    formData.append('jobDescription', jobDescription);
+    formData.append('resume', file);
+    formData.append('jobDescription', jobDesc);
 
     try {
       const response = await fetch('http://localhost:5000/api/upload-resume', {
@@ -32,96 +25,107 @@ export default function DashboardPage() {
       });
 
       const data = await response.json();
-      
+
       if (response.ok) {
-        // We successfully got the strategy from Gemini! Save it to state.
-        setAiFeedback(data.aiFeedback);
+        // Automatically navigate to the room. The user never sees the strategy.
+        navigate('/interview', { state: { aiFeedback: data.aiFeedback } });
       } else {
         alert("Error: " + data.error);
       }
     } catch (error) {
-      console.error("Upload failed:", error);
-      alert("Failed to connect to the server.");
+      console.error("Upload failed", error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // 2. Handle navigating to the Interview Room
-  const handleEnterRoom = () => {
-    navigate('/interview', { 
-      state: { 
-        // We pass the aiFeedback we just saved in state over to the new page
-        aiFeedback: aiFeedback 
-      } 
-    });
-  };
-
   return (
-    <div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 font-sans">
-      <div className="max-w-4xl mx-auto space-y-8">
-        
-        <div className="text-center">
-          <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight">
-            InterviewAI Dashboard
-          </h1>
-          <p className="mt-4 text-lg text-slate-600">
-            Upload your resume and job description to prepare your AI logic.
-          </p>
-        </div>
-        
-        {/* The Upload Form */}
-        <div className="bg-white p-8 rounded-xl shadow-md border border-slate-200">
-          <form onSubmit={handleUpload} className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Target Job Description</label>
-              <textarea 
-                className="w-full border border-slate-300 rounded-lg p-3 focus:ring-blue-500 focus:border-blue-500"
-                rows="4"
-                placeholder="Paste the job description here..."
-                value={jobDescription}
-                onChange={(e) => setJobDescription(e.target.value)}
-              />
-            </div>
+    <div className="min-h-screen bg-slate-50 flex font-sans text-slate-800">
+      
+      {/* Sidebar matching the design */}
+      <div className="w-64 bg-white border-r border-slate-200 p-6 flex flex-col">
+        <h1 className="text-xl font-bold text-blue-600 mb-10 flex items-center">
+          <svg className="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+          InterviewPro
+        </h1>
+        <nav className="flex-1 space-y-2">
+          <button className="w-full flex items-center space-x-3 bg-blue-50 text-blue-700 px-4 py-3 rounded-lg font-medium transition-colors">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+            <span>Dashboard</span>
+          </button>
+          <button className="w-full flex items-center space-x-3 text-slate-500 hover:bg-slate-100 px-4 py-3 rounded-lg font-medium transition-colors">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+            <span>Past Interviews</span>
+          </button>
+        </nav>
+      </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Upload Resume (PDF)</label>
+      {/* Main Content Area */}
+      <div className="flex-1 p-10 overflow-y-auto">
+        <h2 className="text-3xl font-bold mb-8 text-slate-800">My Interviews</h2>
+        
+        {/* Static Placeholder Table */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-10">
+          <table className="w-full text-left">
+            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 text-sm">
+              <tr>
+                <th className="px-6 py-4 font-medium">Date</th>
+                <th className="px-6 py-4 font-medium">Job Role</th>
+                <th className="px-6 py-4 font-medium">Score</th>
+                <th className="px-6 py-4 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              <tr className="hover:bg-slate-50 transition-colors">
+                <td className="px-6 py-4 text-slate-600">Oct 24, 2024</td>
+                <td className="px-6 py-4 font-medium">Senior Android Developer</td>
+                <td className="px-6 py-4"><span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-bold">85</span></td>
+                <td className="px-6 py-4 text-right text-slate-400">•••</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Start New Session Card */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8 max-w-4xl">
+          <h3 className="text-xl font-bold mb-6">Start New Session</h3>
+          
+          <div className="flex flex-col md:flex-row gap-6 mb-6">
+            {/* File Upload Box */}
+            <div className="flex-1 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center p-8 bg-slate-50 hover:bg-slate-100 transition-colors relative">
+              <svg className="w-10 h-10 text-slate-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+              <span className="text-slate-600 font-medium mb-1">Upload Resume</span>
+              <span className="text-slate-400 text-sm mb-4">PDF format only</span>
               <input 
                 type="file" 
-                accept=".pdf"
-                onChange={(e) => setResumeFile(e.target.files[0])}
-                className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                accept="application/pdf"
+                onChange={(e) => setFile(e.target.files[0])}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              />
+              {file && <span className="text-blue-600 text-sm font-bold mt-2 truncate w-full text-center px-4">{file.name}</span>}
+            </div>
+
+            {/* Job Description Box */}
+            <div className="flex-1">
+              <textarea 
+                placeholder="Paste the target Job Description here..."
+                className="w-full h-full min-h-[160px] p-4 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none"
+                value={jobDesc}
+                onChange={(e) => setJobDesc(e.target.value)}
               />
             </div>
-
-            <button 
-              type="submit" 
-              disabled={isLoading}
-              className={`w-full py-3 px-4 border border-transparent rounded-lg shadow-sm text-white font-bold ${isLoading ? 'bg-slate-400' : 'bg-blue-600 hover:bg-blue-700'}`}
-            >
-              {isLoading ? 'Analyzing Resume...' : 'Generate Interview Strategy'}
-            </button>
-          </form>
-        </div>
-
-        {/* The AI Feedback Section (Only shows if aiFeedback exists, like in your screenshot!) */}
-        {aiFeedback && (
-          <div className="bg-slate-900 rounded-xl p-8 shadow-xl border border-slate-700">
-            <h2 className="text-xl font-bold text-white mb-4">Interview Strategy Generated</h2>
-            <div className="text-slate-300 mb-6 text-sm leading-relaxed whitespace-pre-wrap">
-              {aiFeedback}
-            </div>
-            
-            {/* The exact button from your screenshot */}
-            <button 
-              onClick={handleEnterRoom}
-              className="bg-transparent text-white border-2 border-white px-6 py-2 rounded-lg font-semibold hover:bg-white hover:text-slate-900 transition-colors"
-            >
-              Enter Interview Room
-            </button>
           </div>
-        )}
 
+          <button 
+            onClick={handleUpload}
+            disabled={isLoading || !file || !jobDesc}
+            className={`w-full py-4 rounded-xl font-bold text-white shadow-lg transition-all ${
+              isLoading || !file || !jobDesc ? 'bg-slate-400 cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 transform hover:-translate-y-0.5'
+            }`}
+          >
+            {isLoading ? 'ANALYZING PROFILE & PREPARING AI...' : 'BEGIN INTERVIEW'}
+          </button>
+        </div>
       </div>
     </div>
   );
