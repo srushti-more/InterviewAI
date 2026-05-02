@@ -1,11 +1,28 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+// Import the logo image
+import logo from './assets/image_7.png'; 
 
 export default function Dashboard() {
   const [file, setFile] = useState(null);
   const [jobDesc, setJobDesc] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [pastInterviews, setPastInterviews] = useState([]);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    // Fetch past interviews from your real database
+    const fetchHistory = async () => {
+      try {
+        const response = await fetch('http://localhost:5000/api/interviews');
+        const data = await response.json();
+        setPastInterviews(data);
+      } catch (error) {
+        console.error("Failed to load interview history:", error);
+      }
+    };
+    fetchHistory();
+  }, []);
 
   const handleUpload = async () => {
     if (!file || !jobDesc) {
@@ -19,6 +36,7 @@ export default function Dashboard() {
     formData.append('jobDescription', jobDesc);
 
     try {
+      // REAL BACKEND CALL
       const response = await fetch('http://localhost:5000/api/upload-resume', {
         method: 'POST',
         body: formData,
@@ -27,7 +45,6 @@ export default function Dashboard() {
       const data = await response.json();
 
       if (response.ok) {
-        // Automatically navigate to the room. The user never sees the strategy.
         navigate('/interview', { state: { aiFeedback: data.aiFeedback } });
       } else {
         alert("Error: " + data.error);
@@ -39,32 +56,49 @@ export default function Dashboard() {
     }
   };
 
+  // Function to smoothly scroll to the past interviews section
+  const scrollToPastInterviews = () => {
+    const element = document.getElementById("past-interviews-section");
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth" });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans text-slate-800">
       
       {/* Sidebar matching the design */}
-      <div className="w-64 bg-white border-r border-slate-200 p-6 flex flex-col">
+      <div className="w-64 bg-white border-r border-slate-200 p-6 flex flex-col fixed h-full z-10">
+        {/* Header with Logo */}
         <h1 className="text-xl font-bold text-blue-600 mb-10 flex items-center">
-          <svg className="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+          <img src={logo} alt="InterviewAI Logo" className="w-8 h-8 mr-2" />
           InterviewPro
         </h1>
         <nav className="flex-1 space-y-2">
-          <button className="w-full flex items-center space-x-3 bg-blue-50 text-blue-700 px-4 py-3 rounded-lg font-medium transition-colors">
+          <button 
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            className="w-full flex items-center space-x-3 bg-blue-50 text-blue-700 px-4 py-3 rounded-lg font-medium transition-colors"
+          >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
             <span>Dashboard</span>
           </button>
-          <button className="w-full flex items-center space-x-3 text-slate-500 hover:bg-slate-100 px-4 py-3 rounded-lg font-medium transition-colors">
+          {/* Sidebar Past Interviews Button -> Scrolls to Table */}
+          <button 
+            onClick={scrollToPastInterviews}
+            className="w-full flex items-center space-x-3 text-slate-500 hover:bg-slate-100 px-4 py-3 rounded-lg font-medium transition-colors"
+          >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
             <span>Past Interviews</span>
           </button>
         </nav>
       </div>
 
-      {/* Main Content Area */}
-      <div className="flex-1 p-10 overflow-y-auto">
-        <h2 className="text-3xl font-bold mb-8 text-slate-800">My Interviews</h2>
+      {/* Main Content Area - Added margin-left to account for fixed sidebar */}
+      <div className="flex-1 p-10 overflow-y-auto ml-64">
         
-        {/* Static Placeholder Table */}
+        <h2 className="text-3xl font-bold mb-8 text-slate-800" id="past-interviews-section">My Interviews</h2>
+        
+        {/* Dynamic Table */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-10">
           <table className="w-full text-left">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 text-sm">
@@ -72,16 +106,40 @@ export default function Dashboard() {
                 <th className="px-6 py-4 font-medium">Date</th>
                 <th className="px-6 py-4 font-medium">Job Role</th>
                 <th className="px-6 py-4 font-medium">Score</th>
-                <th className="px-6 py-4 font-medium"></th>
+                <th className="px-6 py-4 font-medium">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              <tr className="hover:bg-slate-50 transition-colors">
-                <td className="px-6 py-4 text-slate-600">Oct 24, 2024</td>
-                <td className="px-6 py-4 font-medium">Senior Android Developer</td>
-                <td className="px-6 py-4"><span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-bold">85</span></td>
-                <td className="px-6 py-4 text-right text-slate-400">•••</td>
-              </tr>
+              {pastInterviews.length === 0 ? (
+                <tr>
+                  <td colSpan="4" className="px-6 py-8 text-center text-slate-400">
+                    No interviews completed yet. Start your first session below!
+                  </td>
+                </tr>
+              ) : (
+                pastInterviews.map((interview) => (
+                  <tr key={interview._id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4 text-slate-600">
+                      {new Date(interview.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </td>
+                    <td className="px-6 py-4 font-medium">{interview.jobRole}</td>
+                    <td className="px-6 py-4">
+                      <span className={`px-3 py-1 rounded-full text-sm font-bold ${interview.score >= 80 ? 'bg-green-100 text-green-700' : interview.score >= 60 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                        {interview.score}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      {/* RESTORED ONCLICK HANDLER: Passes the specific interview data to the feedback page */}
+                      <button 
+                        onClick={() => navigate('/feedback', { state: { analysisData: interview } })}
+                        className="text-blue-600 hover:text-blue-800 text-sm font-medium transition-colors"
+                      >
+                        View Report
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

@@ -1,8 +1,12 @@
 require('dotenv').config(); 
+
+const dns = require('dns');
+dns.setServers(['8.8.8.8', '8.8.4.4']); // Forces Node to bypass Jio/Airtel ISP blocks
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
+const mongoose = require('mongoose');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const app = express();
@@ -14,6 +18,29 @@ app.use(express.json());
 // Initialize Gemini and Multer (storing files in RAM)
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const upload = multer({ storage: multer.memoryStorage() });
+
+// ==========================================
+// MONGODB SETUP & MODEL
+// ==========================================
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => console.log('✅ Connected to MongoDB!'))
+  .catch(err => console.error('❌ MongoDB connection error:', err));
+
+// UPDATED SCHEMA: Added suggestions and compliment
+const interviewSchema = new mongoose.Schema({
+  date: { type: Date, default: Date.now },
+  jobRole: { type: String, default: 'Software Engineer' },
+  score: Number,
+  strengths: [String],
+  weaknesses: [String],
+  repeatedWords: [String],
+  suggestions: [String], // Actionable things to change/avoid
+  compliment: String,    // A nice closing remark
+  summary: String,
+  qaPairs: [{ question: String, answer: String }]
+});
+
+const Interview = mongoose.model('Interview', interviewSchema);
 
 // ==========================================
 // ROUTES
@@ -31,39 +58,27 @@ app.get('/api/health', (req, res) => {
 // 2. Resume Upload & AI Strategy (Phase 2)
 app.post('/api/upload-resume', upload.single('resume'), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: 'No resume file uploaded' });
-    if (!req.body.jobDescription) return res.status(400).json({ error: 'Job description missing' });
-
+    if (!req.file || !req.body.jobDescription) return res.status(400).json({ error: 'Missing data' });
+    
     // Parse the PDF
     const pdfData = await pdfParse(req.file.buffer);
-    const extractedText = pdfData.text;
-
+    
     // Prompt Gemini
-    const prompt = `
-      You are an expert technical interviewer. Review the following candidate's resume and the target job description. 
-      
-      Generate a concise, personalized interview strategy (max 3 bullet points) and formulate the very first interview question based specifically on the candidate's past projects and skills.
-      
-      IMPORTANT: Format your response in strict Markdown. You MUST use newlines to separate paragraphs, and you MUST put each bullet point on its own completely separate line.
-      
-      Target Job Description: ${req.body.jobDescription}
-      Candidate Resume: ${extractedText}
-    `;
-
+    const prompt = `You are an expert technical interviewer. Review the following resume and job description. Generate a concise interview strategy (max 3 bullet points) and formulate the very first interview question. Format response in strict Markdown.\nJob: ${req.body.jobDescription}\nResume: ${pdfData.text}`;
+    
+    // Using 1.5-flash to avoid 503 errors
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const result = await model.generateContent(prompt);
-    const aiResponse = result.response.text();
-
-    res.status(200).json({
-      message: 'Resume analyzed successfully!',
-      aiFeedback: aiResponse 
+  
+    res.status(200).json({ 
+      message: 'Success', 
+      aiFeedback: result.response.text(), 
+      jobRole: req.body.jobDescription.substring(0, 50) 
     });
 
   } catch (error) {
     console.error('Crash Log:', error);
-    res.status(500).json({ 
-        error: `SYSTEM REPORT: ${error.message}` 
-    });
+    res.status(500).json({ error: `SYSTEM REPORT: ${error.message}` });
   }
 });
 
@@ -84,26 +99,13 @@ app.post('/api/process-audio', upload.single('audio'), async (req, res) => {
     };
 
     // Ask Gemini to transcribe AND evaluate all at once, returning JSON
-    const prompt = `
-      You are an expert technical interviewer. Listen to the candidate's audio response.
-      
-      Return a strict JSON object with exactly these keys:
-      {
-        "transcript": "the exact words the candidate spoke in the audio",
-        "evaluation": "your brief evaluation of their answer",
-        "nextQuestion": "your relevant follow-up question"
-      }
-      Do not include any markdown formatting like \`\`\`json. Return ONLY the raw JSON object.
-    `;
+    const prompt = `Listen to the candidate's audio. Return strict JSON: { "transcript": "candidate's words", "evaluation": "brief evaluation", "nextQuestion": "follow-up question" }`;
 
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     
     // Pass BOTH the prompt and the audio file to the model
     const result = await model.generateContent([prompt, audioPart]);
-    let aiResponseText = result.response.text();
-    
-    // Clean up response just in case Gemini includes markdown wrappers
-    aiResponseText = aiResponseText.replace(/```json/g, '').replace(/```/g, '').trim();
+    let aiResponseText = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
     
     // Parse the JSON Gemini gave us
     const parsedData = JSON.parse(aiResponseText);
@@ -113,9 +115,7 @@ app.post('/api/process-audio', upload.single('audio'), async (req, res) => {
     // Send everything back to the React UI
     res.json({ 
       candidateTranscript: parsedData.transcript,
-      // Combine the evaluation and the next question so it flows nicely in the UI text log
       aiResponse: `${parsedData.evaluation}\n\n${parsedData.nextQuestion}`,
-      // NEW: Send just the question text separately so the AI voice doesn't read the evaluation out loud
       spokenQuestion: parsedData.nextQuestion 
     });
 
@@ -166,7 +166,7 @@ app.post('/api/generate-speech', async (req, res) => {
   }
 });
 
-// 5. Final Interview Analysis (Phase 5 - Strict Scorecard)
+// 5. Final Interview Analysis & DATABASE SAVE (Phase 5 - Strict Scorecard)
 app.post('/api/analyze-interview', async (req, res) => {
   try {
     const { transcript } = req.body;
@@ -178,25 +178,22 @@ app.post('/api/analyze-interview', async (req, res) => {
     // Convert the transcript array into a readable string for Gemini
     const conversationLog = transcript.map(t => `${t.speaker}: ${t.text}`).join('\n');
 
-    const prompt = `
-      You are an incredibly strict, highly experienced technical interviewer. You just finished conducting an interview.
-      Review the following interview transcript and provide a brutally honest, highly critical evaluation of the candidate.
-      
-      Transcript:
-      ${conversationLog}
-      
-      Return a strict JSON object with EXACTLY these keys. Do not include markdown formatting (like \`\`\`json).
-      {
-        "score": <number between 1-100 based on their performance>,
-        "strengths": [<array of 3 short string bullet points highlighting what they did well>],
-        "weaknesses": [<array of 3 short string bullet points highlighting areas for improvement>],
-        "repeatedWords": [<array of words the candidate overused as filler, e.g., "like", "um", "basically">],
-        "summary": "<A detailed, strict paragraph giving your honest professional opinion on their performance and whether you would hire them>",
-        "qaPairs": [
-           { "question": "<extract the AI's question>", "answer": "<extract the candidate's answer>" }
-        ]
-      }
-    `;
+    // UPDATED PROMPT: Demanding deeper, more encouraging, and highly specific feedback
+    const prompt = `You are a highly experienced, constructive, but strict technical interviewer and career coach. 
+    Review this interview transcript and provide a deeply analytical evaluation. 
+    
+    Return strict JSON ONLY with exactly these keys. Do not include markdown formatting:
+    { 
+      "score": <number 1-100>, 
+      "strengths": ["pt1", "pt2", "pt3"], 
+      "weaknesses": ["pt1", "pt2", "pt3"], 
+      "repeatedWords": ["word1", "word2"], 
+      "suggestions": ["Actionable advice 1", "Actionable advice 2"],
+      "compliment": "A genuine, encouraging compliment about their potential based on this interview.",
+      "summary": "Detailed paragraph overview of the whole interview.", 
+      "qaPairs": [{ "question": "q", "answer": "a" }] 
+    }
+    Transcript:\n${conversationLog}`;
 
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const result = await model.generateContent(prompt);
@@ -205,10 +202,25 @@ app.post('/api/analyze-interview', async (req, res) => {
     aiResponseText = aiResponseText.replace(/```json/g, '').replace(/```/g, '').trim();
     
     const analysisData = JSON.parse(aiResponseText);
-    res.json(analysisData);
+
+    // Save to MongoDB
+    const newInterview = await Interview.create(analysisData);
+
+    // Send back to frontend
+    res.json(newInterview); 
 
   } catch (error) {
     console.error('Analysis error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 6. Fetch Past Interviews for Dashboard & Progress Tracking
+app.get('/api/interviews', async (req, res) => {
+  try {
+    const interviews = await Interview.find().sort({ date: -1 });
+    res.json(interviews);
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
