@@ -1,12 +1,14 @@
 require('dotenv').config(); 
 
 const dns = require('dns');
-dns.setServers(['8.8.8.8', '8.8.4.4']); // Forces Node to bypass Jio/Airtel ISP blocks
+dns.setServers(['8.8.8.8', '8.8.4.4']); 
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const app = express();
@@ -15,64 +17,117 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-// Initialize Gemini and Multer (storing files in RAM)
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const upload = multer({ storage: multer.memoryStorage() });
 
 // ==========================================
-// MONGODB SETUP & MODEL
+// MONGODB SETUP & MODELS
 // ==========================================
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('✅ Connected to MongoDB!'))
   .catch(err => console.error('❌ MongoDB connection error:', err));
 
-// UPDATED SCHEMA: Added suggestions and compliment
+const userSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+  date: { type: Date, default: Date.now }
+});
+const User = mongoose.model('User', userSchema);
+
 const interviewSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   date: { type: Date, default: Date.now },
   jobRole: { type: String, default: 'Software Engineer' },
   score: Number,
   strengths: [String],
   weaknesses: [String],
   repeatedWords: [String],
-  suggestions: [String], // Actionable things to change/avoid
-  compliment: String,    // A nice closing remark
+  suggestions: [String], 
+  compliment: String,    
   summary: String,
   qaPairs: [{ question: String, answer: String }]
 });
-
 const Interview = mongoose.model('Interview', interviewSchema);
 
 // ==========================================
-// ROUTES
+// AUTHENTICATION MIDDLEWARE
 // ==========================================
+const verifyToken = (req, res, next) => {
+  const token = req.header('Authorization');
+  if (!token) return res.status(401).json({ error: 'Access denied. No token provided.' });
 
-// 1. Root / Health Check
-app.get('/', (req, res) => {
-  res.send('✅ InterviewAI Backend is active and listening!');
+  try {
+    const verified = jwt.verify(token.replace('Bearer ', ''), process.env.JWT_SECRET);
+    req.user = verified; 
+    next();
+  } catch (err) {
+    res.status(400).json({ error: 'Invalid token.' });
+  }
+};
+
+// ==========================================
+// AUTHENTICATION ROUTES
+// ==========================================
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+    const existingUser = await User.findOne({ email });
+    if (existingUser) return res.status(400).json({ error: 'Email already exists' });
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const newUser = new User({ name, email, password: hashedPassword });
+    await newUser.save();
+    res.status(201).json({ message: 'User registered successfully!' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'Server is running securely!' });
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ error: 'Invalid email or password' });
+
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) return res.status(400).json({ error: 'Invalid email or password' });
+
+    const token = jwt.sign({ id: user._id, name: user.name }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    res.json({ token, user: { id: user._id, name: user.name, email: user.email } });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
-// 2. Resume Upload & AI Strategy (Phase 2)
-app.post('/api/upload-resume', upload.single('resume'), async (req, res) => {
+// ==========================================
+// INTERVIEW ROUTES
+// ==========================================
+app.post('/api/upload-resume', verifyToken, upload.single('resume'), async (req, res) => {
   try {
     if (!req.file || !req.body.jobDescription) return res.status(400).json({ error: 'Missing data' });
-    
-    // Parse the PDF
     const pdfData = await pdfParse(req.file.buffer);
     
-    // Prompt Gemini
-    const prompt = `You are an expert technical interviewer. Review the following resume and job description. Generate a concise interview strategy (max 3 bullet points) and formulate the very first interview question. Format response in strict Markdown.\nJob: ${req.body.jobDescription}\nResume: ${pdfData.text}`;
+    // FIX 1: Force JSON response to strictly separate strategy from the spoken question
+    const prompt = `You are an expert technical interviewer. Review the resume and job description. 
+    Return ONLY a strict JSON object with exactly these two keys. Do not use markdown wrappers.
+    {
+      "strategy": "Concise interview strategy max 3 bullets",
+      "firstQuestion": "Hello ${req.user.name}, [your very first question here]"
+    }
+    Job: ${req.body.jobDescription}\nResume: ${pdfData.text}`;
     
-    // Using 1.5-flash to avoid 503 errors
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const result = await model.generateContent(prompt);
+    let aiResponseText = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+    
+    const parsedData = JSON.parse(aiResponseText);
   
     res.status(200).json({ 
       message: 'Success', 
-      aiFeedback: result.response.text(), 
+      aiFeedback: parsedData.firstQuestion, // NOW ONLY SENDS THE GREETING + QUESTION!
       jobRole: req.body.jobDescription.substring(0, 50) 
     });
 
@@ -82,157 +137,297 @@ app.post('/api/upload-resume', upload.single('resume'), async (req, res) => {
   }
 });
 
-// 3. Audio Processing (Phase 3 - All-in-One Gemini Loop)
 app.post('/api/process-audio', upload.single('audio'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No audio file uploaded' });
-    
-    console.log(`Audio received! Size: ${req.file.size} bytes`);
-    console.log("Sending audio directly to Gemini...");
-
-    // Convert the audio buffer into the base64 format Gemini expects
-    const audioPart = {
-      inlineData: {
-        data: req.file.buffer.toString("base64"),
-        mimeType: req.file.mimetype // usually 'audio/webm' from the browser
-      }
-    };
-
-    // Ask Gemini to transcribe AND evaluate all at once, returning JSON
+    const audioPart = { inlineData: { data: req.file.buffer.toString("base64"), mimeType: req.file.mimetype } };
     const prompt = `Listen to the candidate's audio. Return strict JSON: { "transcript": "candidate's words", "evaluation": "brief evaluation", "nextQuestion": "follow-up question" }`;
 
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-    
-    // Pass BOTH the prompt and the audio file to the model
     const result = await model.generateContent([prompt, audioPart]);
     let aiResponseText = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-    
-    // Parse the JSON Gemini gave us
     const parsedData = JSON.parse(aiResponseText);
     
-    console.log(`Candidate said: "${parsedData.transcript}"`);
-
-    // Send everything back to the React UI
-    res.json({ 
-      candidateTranscript: parsedData.transcript,
-      aiResponse: `${parsedData.evaluation}\n\n${parsedData.nextQuestion}`,
-      spokenQuestion: parsedData.nextQuestion 
-    });
-
+    res.json({ candidateTranscript: parsedData.transcript, aiResponse: `${parsedData.evaluation}\n\n${parsedData.nextQuestion}`, spokenQuestion: parsedData.nextQuestion });
   } catch (error) {
-    console.error('Audio processing error:', error);
     res.status(500).json({ error: `SYSTEM REPORT: ${error.message}` });
   }
 });
 
-// 4. ElevenLabs Text-to-Speech Route (Phase 4)
 app.post('/api/generate-speech', async (req, res) => {
   try {
     const { text } = req.body;
-    
-    // Using ElevenLabs default "Rachel" voice ID. You can change this in the URL.
     const VOICE_ID = '21m00Tcm4TlvDq8ikWAM'; 
-    const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
-
     const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`, {
       method: 'POST',
-      headers: {
-        'Accept': 'audio/mpeg',
-        'xi-api-key': ELEVENLABS_API_KEY,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        text: text,
-        model_id: 'eleven_monolingual_v1',
-        voice_settings: { stability: 0.5, similarity_boost: 0.5 }
-      })
+      headers: { 'Accept': 'audio/mpeg', 'xi-api-key': process.env.ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text, model_id: 'eleven_monolingual_v1', voice_settings: { stability: 0.5, similarity_boost: 0.5 } })
     });
-
     if (!response.ok) throw new Error('ElevenLabs API error');
-
-    // Convert response to buffer and send back to frontend
     const audioArrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(audioArrayBuffer);
-    
-    res.set({
-      'Content-Type': 'audio/mpeg',
-      'Content-Length': buffer.length
-    });
-    res.send(buffer);
-
+    res.set({ 'Content-Type': 'audio/mpeg', 'Content-Length': Buffer.from(audioArrayBuffer).length });
+    res.send(Buffer.from(audioArrayBuffer));
   } catch (error) {
-    console.error('TTS Error:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// 5. Final Interview Analysis & DATABASE SAVE (Phase 5 - Strict Scorecard)
-app.post('/api/analyze-interview', async (req, res) => {
+app.post('/api/analyze-interview', verifyToken, async (req, res) => {
   try {
     const { transcript } = req.body;
-    
-    if (!transcript || transcript.length === 0) {
-      return res.status(400).json({ error: 'No transcript provided for analysis' });
-    }
+    if (!transcript || transcript.length === 0) return res.status(400).json({ error: 'No transcript provided for analysis' });
 
-    // Convert the transcript array into a readable string for Gemini
     const conversationLog = transcript.map(t => `${t.speaker}: ${t.text}`).join('\n');
-
-    // UPDATED PROMPT: Demanding deeper, more encouraging, and highly specific feedback
-    const prompt = `You are a highly experienced, constructive, but strict technical interviewer and career coach. 
-    Review this interview transcript and provide a deeply analytical evaluation. 
-    
-    Return strict JSON ONLY with exactly these keys. Do not include markdown formatting:
-    { 
-      "score": <number 1-100>, 
-      "strengths": ["pt1", "pt2", "pt3"], 
-      "weaknesses": ["pt1", "pt2", "pt3"], 
-      "repeatedWords": ["word1", "word2"], 
-      "suggestions": ["Actionable advice 1", "Actionable advice 2"],
-      "compliment": "A genuine, encouraging compliment about their potential based on this interview.",
-      "summary": "Detailed paragraph overview of the whole interview.", 
-      "qaPairs": [{ "question": "q", "answer": "a" }] 
-    }
-    Transcript:\n${conversationLog}`;
+    const prompt = `You are a highly experienced, constructive, but strictly professional technical interviewer and career coach. Review this transcript. CRITICAL GRADING RULE: If candidate provided no meaningful answers, mostly "[Processing audio...]", silence, or empty responses, give a score of 0. Return strict JSON ONLY: { "score": <number 0-100>, "strengths": ["pt1"], "weaknesses": ["pt1"], "repeatedWords": ["word1"], "suggestions": ["adv1"], "compliment": "A genuine compliment.", "summary": "Detailed overview.", "qaPairs": [{ "question": "q", "answer": "a" }] } Transcript:\n${conversationLog}`;
 
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const result = await model.generateContent(prompt);
-    
-    let aiResponseText = result.response.text();
-    aiResponseText = aiResponseText.replace(/```json/g, '').replace(/```/g, '').trim();
+    let aiResponseText = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
     
     const analysisData = JSON.parse(aiResponseText);
-
-    // Save to MongoDB
+    analysisData.userId = req.user.id; 
     const newInterview = await Interview.create(analysisData);
 
-    // Send back to frontend
     res.json(newInterview); 
-
   } catch (error) {
-    console.error('Analysis error:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// 6. Fetch Past Interviews for Dashboard & Progress Tracking
-app.get('/api/interviews', async (req, res) => {
+app.get('/api/interviews', verifyToken, async (req, res) => {
   try {
-    const interviews = await Interview.find().sort({ date: -1 });
+    const interviews = await Interview.find({ userId: req.user.id }).sort({ date: -1 });
     res.json(interviews);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// ==========================================
-// SERVER START
-// ==========================================
-
 app.listen(PORT, () => {
-  console.log(`🚀 Backend server is running on http://localhost:${PORT}`);
-  
-  // Verify API Keys are loaded into the environment
-  if(process.env.GEMINI_API_KEY) console.log('✅ Gemini Key Loaded');
-  if(process.env.ELEVENLABS_API_KEY) console.log('✅ ElevenLabs Key Loaded');
+  console.log(`🚀 Secure Backend running on http://localhost:${PORT}`);
+  if(process.env.JWT_SECRET) console.log('🔐 JWT Security Enabled');
 });
+
+// require('dotenv').config(); 
+
+// const dns = require('dns');
+// dns.setServers(['8.8.8.8', '8.8.4.4']); 
+// const express = require('express');
+// const cors = require('cors');
+// const multer = require('multer');
+// const pdfParse = require('pdf-parse');
+// const mongoose = require('mongoose');
+// const bcrypt = require('bcryptjs');
+// const jwt = require('jsonwebtoken');
+// const { GoogleGenerativeAI } = require('@google/generative-ai');
+
+// const app = express();
+// const PORT = process.env.PORT || 5000;
+
+// app.use(cors());
+// app.use(express.json());
+
+// const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+// const upload = multer({ storage: multer.memoryStorage() });
+
+// // ==========================================
+// // MONGODB SETUP & MODELS
+// // ==========================================
+// mongoose.connect(process.env.MONGODB_URI)
+//   .then(() => console.log('✅ Connected to MongoDB!'))
+//   .catch(err => console.error('❌ MongoDB connection error:', err));
+
+// // NEW: User Schema for Authentication
+// const userSchema = new mongoose.Schema({
+//   name: { type: String, required: true },
+//   email: { type: String, required: true, unique: true },
+//   password: { type: String, required: true },
+//   date: { type: Date, default: Date.now }
+// });
+
+// const User = mongoose.model('User', userSchema);
+
+// // UPDATED: Interview Schema now links to a specific User
+// const interviewSchema = new mongoose.Schema({
+//   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // Links to the User
+//   date: { type: Date, default: Date.now },
+//   jobRole: { type: String, default: 'Software Engineer' },
+//   score: Number,
+//   strengths: [String],
+//   weaknesses: [String],
+//   repeatedWords: [String],
+//   suggestions: [String], 
+//   compliment: String,    
+//   summary: String,
+//   qaPairs: [{ question: String, answer: String }]
+// });
+
+// const Interview = mongoose.model('Interview', interviewSchema);
+
+// // ==========================================
+// // AUTHENTICATION MIDDLEWARE
+// // ==========================================
+// // This acts as a security guard for protected routes
+// const verifyToken = (req, res, next) => {
+//   const token = req.header('Authorization');
+//   if (!token) return res.status(401).json({ error: 'Access denied. No token provided.' });
+
+//   try {
+//     const verified = jwt.verify(token.replace('Bearer ', ''), process.env.JWT_SECRET);
+//     req.user = verified; // Adds user info (id, name) to the request
+//     next();
+//   } catch (err) {
+//     res.status(400).json({ error: 'Invalid token.' });
+//   }
+// };
+
+// // ==========================================
+// // AUTHENTICATION ROUTES
+// // ==========================================
+
+// // Register a new user
+// app.post('/api/auth/register', async (req, res) => {
+//   try {
+//     const { name, email, password } = req.body;
+    
+//     const existingUser = await User.findOne({ email });
+//     if (existingUser) return res.status(400).json({ error: 'Email already exists' });
+
+//     // Encrypt password
+//     const salt = await bcrypt.genSalt(10);
+//     const hashedPassword = await bcrypt.hash(password, salt);
+
+//     const newUser = new User({ name, email, password: hashedPassword });
+//     await newUser.save();
+
+//     res.status(201).json({ message: 'User registered successfully!' });
+//   } catch (error) {
+//     res.status(500).json({ error: error.message });
+//   }
+// });
+
+// // Login an existing user
+// app.post('/api/auth/login', async (req, res) => {
+//   try {
+//     const { email, password } = req.body;
+
+//     const user = await User.findOne({ email });
+//     if (!user) return res.status(400).json({ error: 'Invalid email or password' });
+
+//     const validPassword = await bcrypt.compare(password, user.password);
+//     if (!validPassword) return res.status(400).json({ error: 'Invalid email or password' });
+
+//     // Create a secure token with their ID and Name
+//     const token = jwt.sign({ id: user._id, name: user.name }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    
+//     res.json({ token, user: { id: user._id, name: user.name, email: user.email } });
+//   } catch (error) {
+//     res.status(500).json({ error: error.message });
+//   }
+// });
+
+// // ==========================================
+// // INTERVIEW ROUTES (NOW SECURED)
+// // ==========================================
+
+// // SECURED: Upload Resume (Requires Login)
+// app.post('/api/upload-resume', verifyToken, upload.single('resume'), async (req, res) => {
+//   try {
+//     if (!req.file || !req.body.jobDescription) return res.status(400).json({ error: 'Missing data' });
+    
+//     const pdfData = await pdfParse(req.file.buffer);
+    
+//     // UPDATED PROMPT: The AI now knows the user's real name!
+//     const prompt = `You are an expert technical interviewer. Review the following resume and job description. Generate a concise interview strategy (max 3 bullet points). Then, formulate the very first interview question, ensuring you greet the candidate by their name: ${req.user.name}. Format response in strict Markdown.\nJob: ${req.body.jobDescription}\nResume: ${pdfData.text}`;
+    
+//     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+//     const result = await model.generateContent(prompt);
+  
+//     res.status(200).json({ 
+//       message: 'Success', 
+//       aiFeedback: result.response.text(), 
+//       jobRole: req.body.jobDescription.substring(0, 50) 
+//     });
+
+//   } catch (error) {
+//     console.error('Crash Log:', error);
+//     res.status(500).json({ error: `SYSTEM REPORT: ${error.message}` });
+//   }
+// });
+
+// app.post('/api/process-audio', upload.single('audio'), async (req, res) => {
+//   try {
+//     if (!req.file) return res.status(400).json({ error: 'No audio file uploaded' });
+    
+//     const audioPart = { inlineData: { data: req.file.buffer.toString("base64"), mimeType: req.file.mimetype } };
+//     const prompt = `Listen to the candidate's audio. Return strict JSON: { "transcript": "candidate's words", "evaluation": "brief evaluation", "nextQuestion": "follow-up question" }`;
+
+//     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+//     const result = await model.generateContent([prompt, audioPart]);
+//     let aiResponseText = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+//     const parsedData = JSON.parse(aiResponseText);
+    
+//     res.json({ candidateTranscript: parsedData.transcript, aiResponse: `${parsedData.evaluation}\n\n${parsedData.nextQuestion}`, spokenQuestion: parsedData.nextQuestion });
+//   } catch (error) {
+//     res.status(500).json({ error: `SYSTEM REPORT: ${error.message}` });
+//   }
+// });
+
+// app.post('/api/generate-speech', async (req, res) => {
+//   try {
+//     const { text } = req.body;
+//     const VOICE_ID = '21m00Tcm4TlvDq8ikWAM'; 
+//     const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`, {
+//       method: 'POST',
+//       headers: { 'Accept': 'audio/mpeg', 'xi-api-key': process.env.ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
+//       body: JSON.stringify({ text: text, model_id: 'eleven_monolingual_v1', voice_settings: { stability: 0.5, similarity_boost: 0.5 } })
+//     });
+//     if (!response.ok) throw new Error('ElevenLabs API error');
+//     const audioArrayBuffer = await response.arrayBuffer();
+//     res.set({ 'Content-Type': 'audio/mpeg', 'Content-Length': Buffer.from(audioArrayBuffer).length });
+//     res.send(Buffer.from(audioArrayBuffer));
+//   } catch (error) {
+//     res.status(500).json({ error: error.message });
+//   }
+// });
+
+// // SECURED: Analyze Interview & Save to Specific User ID
+// app.post('/api/analyze-interview', verifyToken, async (req, res) => {
+//   try {
+//     const { transcript } = req.body;
+//     if (!transcript || transcript.length === 0) return res.status(400).json({ error: 'No transcript provided for analysis' });
+
+//     const conversationLog = transcript.map(t => `${t.speaker}: ${t.text}`).join('\n');
+//     const prompt = `You are a highly experienced, constructive, but strictly professional technical interviewer and career coach. Review this transcript. CRITICAL GRADING RULE: If candidate provided no meaningful answers, mostly "[Processing audio...]", silence, or empty responses, give a score of 0. Return strict JSON ONLY: { "score": <number 0-100>, "strengths": ["pt1"], "weaknesses": ["pt1"], "repeatedWords": ["word1"], "suggestions": ["adv1"], "compliment": "A genuine compliment.", "summary": "Detailed overview.", "qaPairs": [{ "question": "q", "answer": "a" }] } Transcript:\n${conversationLog}`;
+
+//     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+//     const result = await model.generateContent(prompt);
+//     let aiResponseText = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+    
+//     const analysisData = JSON.parse(aiResponseText);
+    
+//     // IMPORTANT: Attach the logged-in user's ID to the interview before saving
+//     analysisData.userId = req.user.id; 
+//     const newInterview = await Interview.create(analysisData);
+
+//     res.json(newInterview); 
+//   } catch (error) {
+//     res.status(500).json({ error: error.message });
+//   }
+// });
+
+// // SECURED: Fetch only the logged-in user's past interviews
+// app.get('/api/interviews', verifyToken, async (req, res) => {
+//   try {
+//     // Only finds interviews that match the logged-in user's ID
+//     const interviews = await Interview.find({ userId: req.user.id }).sort({ date: -1 });
+//     res.json(interviews);
+//   } catch (error) {
+//     res.status(500).json({ error: error.message });
+//   }
+// });
+
+// app.listen(PORT, () => {
+//   console.log(`🚀 Secure Backend running on http://localhost:${PORT}`);
+//   if(process.env.JWT_SECRET) console.log('🔐 JWT Security Enabled');
+// });
