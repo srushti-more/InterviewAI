@@ -159,81 +159,77 @@ export default function InterviewRoom() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col p-6 font-sans relative bg-slate-950 overflow-hidden selection:bg-indigo-500/30 text-slate-50">
+    <div className="min-h-screen flex flex-col p-4 sm:p-6 font-sans relative bg-slate-950 overflow-x-hidden selection:bg-indigo-500/30 text-slate-50">
       
-      {/* Background Graphic overlay */}
-      <div 
-        className="absolute inset-0 opacity-10 pointer-events-none mix-blend-screen"
-        style={{ backgroundImage: `url(${roomBg})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
-      ></div>
+      <div className="absolute inset-0 opacity-10 pointer-events-none mix-blend-screen" style={{ backgroundImage: `url(${roomBg})`, backgroundSize: 'cover', backgroundPosition: 'center' }}></div>
 
-      {/* Top Navigation Bar */}
-      <div className="flex justify-between items-center bg-slate-900/60 backdrop-blur-xl p-5 rounded-2xl shadow-xl border border-slate-800 mb-6 z-30 relative">
-        <div className="flex items-center space-x-4">
-          <img src={logo} alt="InterviewAI Logo" className="w-8 h-8 mr-1 drop-shadow-lg" />
-          <div className="flex items-center space-x-2 bg-slate-800/80 px-4 py-1.5 rounded-full border border-slate-700">
-            <div className={`w-2.5 h-2.5 rounded-full ${hasStarted && !isAiSpeaking && !isRecording ? 'bg-indigo-500 animate-pulse' : isRecording ? 'bg-red-500 animate-pulse' : 'bg-slate-500'}`}></div>
-            <span className="text-slate-200 font-semibold text-sm tracking-wide">
+      {/* Responsive Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-center bg-slate-900/60 backdrop-blur-xl p-4 sm:p-5 rounded-2xl shadow-xl border border-slate-800 mb-6 z-30 relative gap-3 sm:gap-0">
+        <div className="flex items-center space-x-3 w-full sm:w-auto justify-center sm:justify-start">
+          <img src={logo} alt="InterviewAI Logo" className="w-6 h-6 sm:w-8 sm:h-8 drop-shadow-lg" />
+          <div className="flex items-center space-x-2 bg-slate-800/80 px-3 sm:px-4 py-1.5 rounded-full border border-slate-700">
+            <div className={`w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full ${hasStarted && !isAiSpeaking && !isRecording ? 'bg-indigo-500 animate-pulse' : isRecording ? 'bg-red-500 animate-pulse' : 'bg-slate-500'}`}></div>
+            <span className="text-slate-200 font-semibold text-xs sm:text-sm tracking-wide">
               {hasStarted ? `Session Active (Q${questionCount}/${MAX_QUESTIONS})` : 'Waiting to Start'}
             </span>
           </div>
         </div>
-        <span className="text-slate-400 font-medium text-sm">
+        <span className="text-slate-400 font-medium text-xs sm:text-sm">
           Target Role: <strong className="text-slate-200">Software Engineer</strong>
         </span>
       </div>
 
+      {/* Flex container stack on mobile, side-by-side on desktop */}
       <div className="flex flex-col lg:flex-row gap-6 flex-grow relative z-20">
         
-        {/* Left Column: AI Interface */}
-        <div className="flex-1 bg-slate-900/40 backdrop-blur-sm border border-slate-800 rounded-3xl flex flex-col items-center justify-center p-8 relative overflow-hidden shadow-2xl">
+        {/* AI Interface / Orb container */}
+        <div className={`flex-1 bg-slate-900/40 backdrop-blur-sm border border-slate-800 rounded-3xl flex flex-col items-center justify-center p-6 sm:p-8 relative overflow-hidden shadow-2xl transition-all ${hasStarted ? 'min-h-[50vh] lg:min-h-0' : 'min-h-[70vh]'}`}>
           
           {!hasStarted && (
-            <div className="absolute inset-0 z-40 bg-slate-950/80 flex flex-col items-center justify-center backdrop-blur-xl rounded-3xl border border-slate-800">
-              <div className="w-20 h-20 mb-6 bg-indigo-500/20 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(99,102,241,0.2)]">
-                <svg className="w-10 h-10 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
+            <div className="absolute inset-0 z-40 bg-slate-950/90 flex flex-col items-center justify-center backdrop-blur-xl rounded-3xl border border-slate-800 p-4 text-center">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 mb-6 bg-indigo-500/20 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(99,102,241,0.2)]">
+                <svg className="w-8 h-8 sm:w-10 sm:h-10 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
               </div>
-              <h2 className="text-slate-50 text-2xl font-bold mb-8 tracking-tight">Audio Calibrated.</h2>
+              <h2 className="text-slate-50 text-xl sm:text-2xl font-bold mb-6 tracking-tight">Audio Calibrated.</h2>
               <button 
                 onClick={beginInterviewSession}
-                className="px-10 py-4 bg-gradient-to-r from-indigo-600 to-violet-600 hover:shadow-[0_0_25px_rgba(99,102,241,0.4)] text-white font-semibold rounded-xl text-lg transition-all transform hover:-translate-y-0.5 border border-indigo-400/30"
+                className="px-8 sm:px-10 py-3.5 sm:py-4 bg-gradient-to-r from-indigo-600 to-violet-600 hover:shadow-[0_0_25px_rgba(99,102,241,0.4)] text-white font-semibold rounded-xl text-base sm:text-lg transition-all transform hover:-translate-y-0.5 border border-indigo-400/30 w-full sm:w-auto"
               >
                 Initialize Session
               </button>
             </div>
           )}
 
-          {/* Futuristic Visualizer */}
-          <div className="relative w-64 h-64 flex items-center justify-center">
-            {/* Outer Glow Rings */}
+          {/* Scaled Orb for Mobile */}
+          <div className="relative w-48 h-48 sm:w-64 sm:h-64 flex items-center justify-center mt-[-40px] sm:mt-0 lg:mb-12">
             <div className={`absolute inset-0 rounded-full transition-all duration-1000 ${
-              isRecording ? 'bg-red-500/20 shadow-[0_0_80px_rgba(239,68,68,0.4)] scale-110' : 
-              isAiSpeaking ? 'bg-cyan-500/20 shadow-[0_0_80px_rgba(6,182,212,0.4)] scale-105 animate-pulse' : 
-              'bg-indigo-500/5 shadow-[0_0_40px_rgba(99,102,241,0.1)]'
+              isRecording ? 'bg-red-500/20 shadow-[0_0_60px_rgba(239,68,68,0.4)] scale-110' : 
+              isAiSpeaking ? 'bg-cyan-500/20 shadow-[0_0_60px_rgba(6,182,212,0.4)] scale-105 animate-pulse' : 
+              'bg-indigo-500/5 shadow-[0_0_30px_rgba(99,102,241,0.1)]'
             }`}></div>
             
-            {/* Core Orb */}
-            <div className={`relative w-48 h-48 rounded-full flex items-center justify-center transition-all duration-300 z-10 border ${
+            <div className={`relative w-36 h-36 sm:w-48 sm:h-48 rounded-full flex items-center justify-center transition-all duration-300 z-10 border ${
                isRecording ? 'bg-slate-900 border-red-500/50' : 
                isAiSpeaking ? 'bg-slate-900 border-cyan-500/50' : 
                'bg-slate-900 border-slate-700'
             }`}>
-              <div className={`w-32 h-32 rounded-full blur-xl transition-all duration-300 absolute ${
+              <div className={`w-24 h-24 sm:w-32 sm:h-32 rounded-full blur-xl transition-all duration-300 absolute ${
                 isRecording ? 'bg-red-500/40 animate-pulse' : 
                 isAiSpeaking ? 'bg-cyan-500/40 animate-ping' : 'bg-transparent'
               }`}></div>
               
-              <span className="text-slate-200 text-lg font-semibold tracking-widest relative z-20 uppercase">
+              <span className="text-slate-200 text-sm sm:text-lg font-semibold tracking-widest relative z-20 uppercase">
                 {isRecording ? 'Listening' : isAiSpeaking ? 'AI Active' : 'Standby'}
               </span>
             </div>
           </div>
 
-          <div className="absolute bottom-10 flex space-x-6 z-30 w-full justify-center px-10">
+          {/* Controls - stacked on very small screens, row on slightly larger ones */}
+          <div className="absolute bottom-6 sm:bottom-10 flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-6 z-30 w-full justify-center px-6 sm:px-10">
             <button 
               onClick={toggleRecording}
               disabled={isAiSpeaking || !hasStarted}
-              className={`flex-1 max-w-[240px] py-4 rounded-xl font-semibold text-white transition-all shadow-lg border flex items-center justify-center space-x-2 ${
+              className={`flex-1 sm:max-w-[240px] py-3.5 sm:py-4 rounded-xl font-semibold text-white transition-all shadow-lg border flex items-center justify-center space-x-2 text-sm sm:text-base ${
                 isRecording ? 'bg-red-500/20 hover:bg-red-500/30 border-red-500/50 text-red-100' : 
                 isAiSpeaking || !hasStarted ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed' : 
                 'bg-indigo-600/20 hover:bg-indigo-600/30 border-indigo-500/50 text-indigo-100'
@@ -245,45 +241,43 @@ export default function InterviewRoom() {
             
             <button 
               onClick={handleEndInterview}
-              className="flex-1 max-w-[240px] py-4 rounded-xl font-semibold text-slate-300 bg-slate-800 hover:bg-slate-700 transition-colors border border-slate-700"
+              className="flex-1 sm:max-w-[240px] py-3.5 sm:py-4 rounded-xl font-semibold text-slate-300 bg-slate-800 hover:bg-slate-700 transition-colors border border-slate-700 text-sm sm:text-base"
             >
               End Session
             </button>
           </div>
         </div>
 
-        {/* Right Column: Glass Transcript Overlay */}
-        <div 
-          className={`w-full lg:w-[450px] bg-slate-900/80 backdrop-blur-2xl rounded-3xl flex flex-col shadow-2xl overflow-hidden border border-slate-800 transition-transform duration-700 ease-in-out ${
-            hasStarted ? 'translate-x-0 opacity-100' : 'translate-x-10 opacity-0 pointer-events-none'
-          }`}
-        >
-          <div className="bg-slate-800/50 p-6 border-b border-slate-800">
-            <h3 className="font-semibold text-slate-200 flex items-center tracking-tight">
-              <svg className="w-5 h-5 mr-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
-              Live Diagnostics
-            </h3>
-          </div>
-          
-          <div className="flex-1 p-6 overflow-y-auto space-y-6 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
-            {transcript.map((entry, index) => (
-              <div key={index} className={`flex flex-col ${entry.speaker === 'Candidate' || entry.speaker === 'System' ? 'items-end' : 'items-start'}`}>
-                <span className="text-[11px] font-bold text-slate-500 mb-1.5 mx-1 uppercase tracking-wider">
-                  {entry.speaker}
-                </span>
-                <div className={`max-w-[85%] rounded-2xl px-5 py-3.5 shadow-md whitespace-pre-wrap text-sm leading-relaxed border ${
-                  entry.speaker === 'Candidate' 
-                    ? 'bg-indigo-600/20 text-indigo-100 border-indigo-500/30 rounded-tr-sm' 
-                    : entry.speaker === 'System'
-                    ? 'bg-slate-800/80 text-slate-300 border-slate-700 rounded-tr-sm italic'
-                    : 'bg-slate-800 border-slate-700 text-slate-300 rounded-tl-sm'
-                }`}>
-                  {entry.text}
+        {/* Live Transcript - Flex child so it flows correctly on mobile */}
+        {hasStarted && (
+          <div className="w-full lg:w-[450px] bg-slate-900/80 backdrop-blur-2xl rounded-3xl flex flex-col shadow-2xl overflow-hidden border border-slate-800 h-[400px] lg:h-auto flex-shrink-0 animate-in fade-in slide-in-from-bottom-8 lg:slide-in-from-right-8 duration-700">
+            <div className="bg-slate-800/50 p-4 sm:p-6 border-b border-slate-800">
+              <h3 className="font-semibold text-slate-200 flex items-center tracking-tight text-sm sm:text-base">
+                <svg className="w-4 h-4 sm:w-5 sm:h-5 mr-2 sm:mr-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+                Live Diagnostics
+              </h3>
+            </div>
+            
+            <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4 sm:space-y-6 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+              {transcript.map((entry, index) => (
+                <div key={index} className={`flex flex-col ${entry.speaker === 'Candidate' || entry.speaker === 'System' ? 'items-end' : 'items-start'}`}>
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 mb-1 mx-1 uppercase tracking-wider">
+                    {entry.speaker}
+                  </span>
+                  <div className={`max-w-[90%] sm:max-w-[85%] rounded-2xl px-4 py-2.5 sm:px-5 sm:py-3.5 shadow-md whitespace-pre-wrap text-xs sm:text-sm leading-relaxed border ${
+                    entry.speaker === 'Candidate' 
+                      ? 'bg-indigo-600/20 text-indigo-100 border-indigo-500/30 rounded-tr-sm' 
+                      : entry.speaker === 'System'
+                      ? 'bg-slate-800/80 text-slate-300 border-slate-700 rounded-tr-sm italic'
+                      : 'bg-slate-800 border-slate-700 text-slate-300 rounded-tl-sm'
+                  }`}>
+                    {entry.text}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
