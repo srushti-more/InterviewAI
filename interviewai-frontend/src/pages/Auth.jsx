@@ -71,7 +71,7 @@ export default function Auth() {
                 type="text" required 
                 className="w-full px-4 py-3 bg-slate-950/50 border border-slate-800 rounded-xl text-slate-50 placeholder-slate-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
                 onChange={e => setFormData({...formData, name: e.target.value})}
-                placeholder="John Doe"
+                placeholder="Username"
               />
             </div>
           )}
@@ -84,7 +84,7 @@ export default function Auth() {
               placeholder="you@company.com"
             />
           </div>
-          <div>
+          <div> 
             <label className="block text-sm font-medium text-slate-300 mb-1.5">Password</label>
             <input 
               type="password" required 
